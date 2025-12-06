@@ -57,13 +57,6 @@
         .score-val { font-size: 12px; font-weight: bold; color: var(--text-sec); display: flex; align-items: center; justify-content: center; }
         .diag-val { color: var(--accent); font-weight: 900; font-size: 14px; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
 
-        #prev-grid-popup {
-            position: fixed; top: 70px; right: 10px; width: 180px; z-index: 100;
-            background: var(--surface); border: 1px solid var(--grid-border); border-radius: 10px;
-            padding: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); display: none;
-        }
-        #prev-grid-popup.visible { display: block; }
-        
         #static-prev-grid-area {
             margin-top: 20px;
             padding: 15px;
@@ -139,14 +132,6 @@
 
 <div id="top-timer"><span id="tt-msg"></span><div style="background:white;color:var(--danger);width:35px;height:35px;border-radius:50%;display:flex;align-items:center;justify-content:center" id="tt-val"></div></div>
 
-<div id="prev-grid-popup">
-    <div style="display:flex;justify-content:space-between;margin-bottom:5px;font-size:12px;color:var(--text-sec)">
-        <span>Минула гра</span>
-        <span style="cursor:pointer;font-weight:bold" onclick="togglePrevGrid()">✕</span>
-    </div>
-    <div class="mini-grid" id="pg-content"></div>
-</div>
-
 <div class="container">
     <h2 style="margin: 0 0 10px 0;">Matematico</h2>
 
@@ -203,7 +188,6 @@
     </div>
 
     <div id="screen-game" class="hidden" style="width:100%; display:flex; flex-direction:column; align-items:center;">
-        <button id="btn-prev-game" class="outline hidden" onclick="togglePrevGrid()" style="width:auto; padding:5px 15px; font-size:12px; margin-bottom:5px">Минула гра (Попап)</button>
         
         <div id="c-info-classic" class="hidden" style="text-align: center;">
             <span style="color:var(--text-sec)">Раунд <span id="c-round">0</span>/25</span>
@@ -505,19 +489,19 @@
     }
 
     let timerInterval = null;
-    function showTimer(msg, sec, onComplete) {
-        // Clear any existing timer first to avoid overlapping
+    function showTimer(msg, sec, endTime = null, onComplete) {
         if(timerInterval) clearInterval(timerInterval);
 
         const t = document.getElementById('top-timer');
         t.classList.add('visible');
         document.getElementById('tt-msg').innerText = msg;
         
-        const endTime = Date.now() + sec * 1000;
+        // Calculate target time in ms
+        const target = endTime ? endTime * 1000 : Date.now() + sec * 1000;
         
         const update = () => {
             const now = Date.now();
-            const remaining = Math.ceil((endTime - now) / 1000);
+            const remaining = Math.ceil((target - now) / 1000);
             
             if(remaining < 0) { 
                 clearInterval(timerInterval); 
@@ -556,7 +540,7 @@
     }
 
     socket.on('start_guessing_timer', d => {
-        showTimer("ЗАЛИШИЛОСЬ ЧАСУ", d.seconds, () => {
+        showTimer("ЗАЛИШИЛОСЬ ЧАСУ", d.seconds, d.endTime, () => {
             if(!isHost && !document.getElementById('btn-sub-guess').disabled) {
                 submitGuesses();
             }
@@ -693,14 +677,9 @@
     }
 
     socket.on('set_prev_grid', d => {
-        document.getElementById('btn-prev-game').classList.remove('hidden');
-        const c = document.getElementById('pg-content'); c.innerHTML='';
-        d.grid.forEach(v => {
-            let cel=document.createElement('div'); cel.className='mini-cell';
-            if(v) cel.innerText=v;
-            c.appendChild(cel);
-        });
-
+        document.getElementById('btn-prev-game').classList.remove('hidden'); // This might be redundant if popup removed, but ensures static area shows up if used elsewhere
+        
+        // Populate STATIC grid
         const staticArea = document.getElementById('static-prev-grid-area');
         staticArea.classList.remove('hidden');
         const staticC = document.getElementById('static-pg-content'); staticC.innerHTML = '';
@@ -710,8 +689,7 @@
             staticC.appendChild(cel);
         });
     });
-    function togglePrevGrid() { document.getElementById('prev-grid-popup').classList.toggle('visible'); }
-
+    
     function countNums(arr){ let c={}; arr.forEach(x=>c[x]=(c[x]||0)+1); return c; }
     
     socket.on('reset_client', d => {
@@ -721,7 +699,7 @@
         document.getElementById('btn-sub-guess').disabled=false; 
         document.getElementById('btn-sub-guess').innerText="Відправити";
         
-        document.getElementById('btn-prev-game').classList.add('hidden');
+        // Hide prev grid area initially
         document.getElementById('static-prev-grid-area').classList.add('hidden');
         
         showScreen('screen-game'); 
@@ -750,7 +728,7 @@
         updateScoresUI();
     });
     socket.on('move_confirmed', d=>{ updateScoresUI(); });
-    socket.on('start_real_timer', d=>showTimer(d.msg, d.seconds));
+    socket.on('start_real_timer', d=>showTimer(d.msg, d.seconds, d.endTime)); // Pass endTime
 
     function showDetails(p, type) {
         document.getElementById('details-modal').style.display='flex';
