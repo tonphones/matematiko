@@ -196,9 +196,8 @@ def host_force_next(data):
     game['processing_turn'] = True
 
     wait_time = 5 if game['round_count'] >= 25 else TIMER_TURN_CLASSIC
-    # SEND ABSOLUTE TIMESTAMP
-    end_time = time.time() + wait_time
-    emit('start_real_timer', {'seconds': wait_time, 'endTime': end_time, 'msg': 'Залишилося часу на хід:'}, room=room)
+    # UPDATED: Send seconds only
+    emit('start_real_timer', {'seconds': wait_time, 'msg': 'Залишилося часу на хід:'}, room=room)
     socketio.sleep(wait_time)
     
     for p in game['players'].values():
@@ -238,9 +237,8 @@ def host_end_free_game(data):
     game['processing_turn'] = True
     
     try:
-        # SEND ABSOLUTE TIMESTAMP
-        end_time = time.time() + TIMER_END_FREE
-        emit('start_real_timer', {'seconds': TIMER_END_FREE, 'endTime': end_time, 'msg': 'Залишилося щоб заповнити таблицю:'}, room=room)
+        # UPDATED: Send seconds only
+        emit('start_real_timer', {'seconds': TIMER_END_FREE, 'msg': 'Залишилося щоб заповнити таблицю:'}, room=room)
         
         socketio.sleep(TIMER_END_FREE)
         emit('request_final_grid', {}, room=room)
@@ -270,7 +268,6 @@ def fill_free_mode_grid(player, available_numbers):
     safe_grid = []
     for x in current_grid:
         try:
-            # Якщо там щось є, робимо int, якщо ні - None
             val = int(x) if (x is not None and x != "") else None
             safe_grid.append(val)
         except:
@@ -293,7 +290,6 @@ def fill_free_mode_grid(player, available_numbers):
     final_grid = []
     for cell in safe_grid:
         if cell is None:
-            # Якщо пул пустий (дивна помилка), ставимо 0, інакше беремо з пулу
             val = pool.pop() if pool else 0
             final_grid.append(val)
         else:
@@ -325,9 +321,8 @@ def host_trigger_guessing(data):
     game = rooms.get(room)
     if not game or game['host_sid'] != request.sid: return
     
-    # SEND ABSOLUTE TIMESTAMP
-    end_time = time.time() + TIMER_GUESSING_FINAL
-    emit('start_guessing_timer', {'seconds': TIMER_GUESSING_FINAL, 'endTime': end_time}, room=room)
+    # UPDATED: Send seconds only
+    emit('start_guessing_timer', {'seconds': TIMER_GUESSING_FINAL}, room=room)
     
     socketio.sleep(TIMER_GUESSING_FINAL)
     calculate_results(room, guessing_happened=True)
