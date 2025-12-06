@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request
-from flask_socketio import SocketIO, emit, join_room, leave_room
+from flask_socketio import SocketIO, emit, join_room, leave_room, disconnect
 import random
 import string
 import time
@@ -37,7 +37,6 @@ def index():
 
 @socketio.on('create_game')
 def on_create(data):
-    # Ваш пароль
     if data.get('password') != "M@t#m@t1k0":
         emit('error', {'msg': 'Невірний пароль!'})
         return
@@ -89,13 +88,13 @@ def on_kick(data):
     if room in rooms and rooms[room]['host_sid'] == request.sid:
         target_sid = data['sid']
         if target_sid in rooms[room]['players']:
-            # 1. Повідомляємо гравцю, що його кікнули
+            # 1. Повідомляємо
             emit('kicked', room=target_sid)
-            # 2. Видаляємо з даних
+            # 2. Видаляємо дані
             del rooms[room]['players'][target_sid]
-            # 3. Примусово відключаємо від кімнати сокетів (ВАЖЛИВО)
-            leave_room(room, target_sid)
-            # 4. Оновлюємо список для інших
+            # 3. Примусово розриваємо з'єднання (фікс багу з зависанням)
+            disconnect(target_sid)
+            # 4. Оновлюємо список
             update_player_list(room)
 
 def update_player_list(room):
@@ -109,11 +108,9 @@ def on_start(data):
     game = rooms.get(room)
     if not game or game['host_sid'] != request.sid: return
 
-    # --- ПЕРЕВІРКА НА ГРАВЦІВ ---
     if not game['players']:
         emit('display_error', {'msg': 'Немає гравців! Чекаємо...'}, room=request.sid)
         return
-    # ----------------------------
 
     if game['state'] == 'LOBBY':
         game['history_drawn'] = []
@@ -173,7 +170,6 @@ def on_place_classic(data):
     if player and game['current_number'] is not None:
         idx = data['index']
         
-        # 1. ЛАСТИК (ВИДАЛЕННЯ)
         if idx == player['last_turn_index']:
              player['grid'][idx] = None
              player['last_turn_index'] = None
@@ -182,7 +178,6 @@ def on_place_classic(data):
              update_player_list(room)
              return
 
-        # 2. ПОСТАНОВКА НОВОГО
         if player['grid'][idx] is None:
             if player['last_turn_index'] is not None:
                 old_idx = player['last_turn_index']
@@ -205,11 +200,9 @@ def host_force_next(data):
     game['processing_turn'] = True
 
     wait_time = 5 if game['round_count'] >= 25 else TIMER_TURN_CLASSIC
-    # Виправлено текст для Classic Mode
     emit('start_real_timer', {'seconds': wait_time, 'msg': 'Залишилося часу на хід:'}, room=room)
     socketio.sleep(wait_time)
     
-    # Авто-заповнення, якщо гравець не походив
     for p in game['players'].values():
         if not p['ready_turn']:
             empties = [i for i, v in enumerate(p['grid']) if v is None]
@@ -246,13 +239,11 @@ def host_end_free_game(data):
     if game['processing_turn']: return
     game['processing_turn'] = True
     
-    # Виправлено текст для Free Mode
     emit('start_real_timer', {'seconds': TIMER_END_FREE, 'msg': 'Залишилося щоб заповнити таблицю:'}, room=room)
     socketio.sleep(TIMER_END_FREE)
     emit('request_final_grid', {}, room=room)
     socketio.sleep(2)
     
-    # Гарантоване заповнення порожніх клітинок
     for p in game['players'].values():
         fill_free_mode_grid(p, game['free_mode_numbers'])
         
@@ -462,6 +453,15 @@ def next_round_action(data):
             p['score'] = 0
 
     emit('reset_client', {'has_prev': (action=='continue')}, room=room)
+    
+    # --- ВИПРАВЛЕННЯ БАГУ З СІТКОЮ ---
+    # Якщо ми продовжуємо гру (Раунд 2), треба примусово відправити стару сітку
+    if action == 'continue':
+        for pid, p in game['players'].items():
+            if p['prev_grid']:
+                emit('set_prev_grid', {'grid': p['prev_grid']}, room=pid)
+    # ---------------------------------
+
     send_host_info(room)
     
     if game['mode'] == 'classic': next_turn_classic(room)
