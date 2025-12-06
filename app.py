@@ -14,7 +14,7 @@ socketio = SocketIO(app, async_mode='eventlet')
 rooms = {}
 
 # --- КОНФІГУРАЦІЯ ---
-AI_THINK_TIME = 90    
+AI_THINK_TIME = 60    
 TIMER_TURN_CLASSIC = 5
 TIMER_END_FREE = 10 
 TIMER_GUESSING_FINAL = 10 
