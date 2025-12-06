@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Matematico</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg: #121212; --surface: #1e1e1e; --text: #ffffff; --text-sec: #aaaaaa;
+            --primary: #3b82f6; --danger: #ef4444; --accent: #f59e0b; --success: #10b981;
+            --grid-border: #444; --cell-bg: #222; --cell-filled: #1e3a8a;
+        }
+        body.light-mode {
+            --bg: #f3f4f6; --surface: #ffffff; --text: #1f2937; --text-sec: #6b7280;
+            --grid-border: #e5e7eb; --cell-bg: #fff; --cell-filled: #dbeafe;
+        }
+        body { font-family: 'Montserrat', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 0; touch-action: manipulation; }
+        .container { width: 100%; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px; box-sizing: border-box; padding-top: 60px; }
+        .hidden { display: none !important; }
+
+        input, select, button { width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 8px; font-size: 16px; border: 1px solid var(--grid-border); box-sizing: border-box; outline:none; }
+        input, select { background: var(--surface); color: var(--text); }
+        button { background: var(--primary); color: white; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:active { transform: scale(0.98); }
+        button.danger { background: var(--danger); }
+        button.success { background: var(--success); }
+        button.outline { background: transparent; border: 2px solid var(--primary); color: var(--primary); }
+        
+        .card { background: var(--surface); padding: 20px; border-radius: 16px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+
+        /* --- GAME BOARD --- */
+        .game-board-layout {
+            display: grid;
+            grid-template-columns: 35px auto 35px; grid-template-rows: auto 35px;
+            gap: 5px; justify-content: center; align-items: center; margin: 10px 0; max-width: 100%;
+        }
+        /* Grid Wrapper adjusted to leave space for columns */
+        .grid-wrapper {
+            display: grid; 
+            grid-template-columns: repeat(5, 1fr); 
+            width: 80vw; 
+            max-width: 320px; 
+            aspect-ratio: 1 / 1; 
+            border: 2px solid var(--text); 
+            background: var(--text); 
+            gap: 2px; /* Lines fix */
+        }
+        .cell { 
+            background: var(--cell-bg); display: grid; place-items: center;
+            font-size: 24px; font-weight: 900; cursor: pointer; user-select: none; aspect-ratio: 1; overflow: hidden;
+            padding: 0; margin: 0; width: 100%; height: 100%;
+        }
+        .cell.filled { background: var(--cell-filled); color: var(--primary); }
+        .row-scores { display: flex; flex-direction: column; justify-content: space-around; height: 100%; width: 100%; text-align: center; }
+        .col-scores { display: grid; grid-template-columns: repeat(5, 1fr); width: 100%; text-align: center; }
+        .score-val { font-size: 12px; font-weight: bold; color: var(--text-sec); display: flex; align-items: center; justify-content: center; }
+        .diag-val { color: var(--accent); font-weight: 900; font-size: 14px; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+
+        /* --- PREV GRID POPUP & STATIC --- */
+        #prev-grid-popup {
+            position: fixed; top: 70px; right: 10px; width: 180px; z-index: 100;
+            background: var(--surface); border: 1px solid var(--grid-border); border-radius: 10px;
+            padding: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); display: none;
+        }
+        #prev-grid-popup.visible { display: block; }
+        
+        #static-prev-grid-area {
+            margin-top: 20px;
+            padding: 15px;
+            background: #111;
+            border-radius: 12px;
+            border: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .mini-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: #555; border:1px solid #555; }
+        .mini-cell { background: var(--cell-bg); width: 100%; aspect-ratio: 1; font-size: 12px; display: flex; align-items: center; justify-content: center; color: var(--primary); font-weight: bold; }
+
+        /* --- LEADERBOARD & RESULTS --- */
+        .lb-tabs { display: flex; gap: 5px; margin-bottom: 10px; overflow-x: auto; width: 100%; max-width: 600px; padding-bottom: 5px; justify-content: center; }
+        .lb-tab { padding: 8px 16px; background: var(--surface); border-radius: 20px; cursor: pointer; border: 1px solid var(--grid-border); white-space: nowrap; font-size: 14px; }
+        .lb-tab.active { background: var(--primary); color: white; border-color: var(--primary); }
+        
+        .leaderboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; width: 100%; max-width: 800px; max-height: 60vh; overflow-y: auto; }
+        .l-card { background: var(--surface); padding: 15px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; border: 2px solid transparent; cursor: pointer; position: relative; }
+        .l-card:hover { border-color: var(--primary); }
+        .rank-badge { position: absolute; top: 10px; left: 10px; background: var(--accent); color: black; font-weight: 900; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+        .guess-row { display: flex; gap: 5px; margin-top: 5px; font-size: 12px; }
+        .guess-item { display: flex; align-items: center; gap: 2px; }
+        .ok { color: var(--success); } .fail { color: var(--danger); }
+
+        /* --- GUESSING PHASE --- */
+        #screen-guessing { text-align: center; max-width: 800px !important; }
+        #guessing-grids-container { 
+            display: flex; 
+            flex-direction: column; 
+            gap: 20px; 
+            justify-content: center; 
+            align-items: center;
+            margin-bottom: 25px; 
+            width: 100%;
+        }
+        .guessing-grid-box { display: flex; flex-direction: column; align-items: center; width: 100%; }
+        .guessing-grid-title { font-size: 16px; color: var(--text-sec); margin-bottom: 8px; font-weight: bold; }
+        .mini-grid-large { 
+            display: grid; 
+            grid-template-columns: repeat(5, 1fr); 
+            gap: 2px; 
+            background: #555; 
+            border: 2px solid #555; 
+            width: 260px; 
+            aspect-ratio: 1; 
+        }
+        .mini-grid-large .mini-cell { font-size: 18px; }
+        .guess-inputs { display: flex; gap: 20px; justify-content: center; margin: 20px 0; }
+        .guess-select { width: 90px; height: 70px; font-size: 30px; text-align: center; border: 2px solid var(--grid-border); background: var(--bg); color: var(--text); border-radius: 10px; }
+
+        /* --- TIMER --- */
+        #top-timer {
+            position: fixed; top: 0; left: 0; width: 100%; height: 50px; background: var(--danger); color: white;
+            display: flex; align-items: center; justify-content: center; gap: 15px; font-size: 18px; font-weight: bold; z-index: 500;
+            transform: translateY(-100%); transition: transform 0.3s ease; box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        #top-timer.visible { transform: translateY(0); }
+
+        .scoring-table { background: var(--surface); border: 1px solid var(--grid-border); border-radius: 8px; padding: 10px; font-size: 12px; min-width: 200px; margin-top: 10px; text-align: left; }
+        .scoring-table h4 { margin: 0 0 10px 0; color: var(--primary); text-align: center; }
+        .st-row { display: flex; justify-content: space-between; border-bottom: 1px solid var(--grid-border); padding: 4px 0; }
+    </style>
+</head>
+<body>
+
+<div id="top-timer"><span id="tt-msg"></span><div style="background:white;color:var(--danger);width:35px;height:35px;border-radius:50%;display:flex;align-items:center;justify-content:center" id="tt-val"></div></div>
+
+<div id="prev-grid-popup">
+    <div style="display:flex;justify-content:space-between;margin-bottom:5px;font-size:12px;color:var(--text-sec)">
+        <span>Минула гра</span>
+        <span style="cursor:pointer;font-weight:bold" onclick="togglePrevGrid()">✕</span>
+    </div>
+    <div class="mini-grid" id="pg-content"></div>
+</div>
+
+<div class="container">
+    <h2 style="margin: 0 0 10px 0;">Matematico</h2>
+
+    <div id="screen-landing" class="card">
+        <button onclick="showHostSetup()" style="height:60px; font-size:18px">👑 Я Ведучий</button>
+        <button class="outline" onclick="showPlayerSetup()" style="height:60px; font-size:18px">👤 Я Гравець</button>
+        <button class="outline" onclick="document.body.classList.toggle('light-mode')" style="margin-top:10px">🌓 Тема</button>
+    </div>
+
+    <div id="screen-host-setup" class="hidden card">
+        <h3>Створити гру</h3>
+        <input type="password" id="h-pass" placeholder="Пароль">
+        <select id="h-mode"><option value="classic">Класичний</option><option value="free">Вільний</option></select>
+        <button onclick="createGame()">Створити</button>
+        <button class="outline" onclick="showScreen('screen-landing')">Назад</button>
+    </div>
+    <div id="screen-player-setup" class="hidden card">
+        <h3>Вхід</h3>
+        <input type="text" id="p-code" placeholder="Код (XXX-XXX)" style="text-transform:uppercase">
+        <input type="text" id="p-name" placeholder="Ваше ім'я">
+        <div style="cursor:pointer; margin-bottom:15px;" onclick="document.getElementById('avatar-modal').style.display='flex'">
+            <img id="my-avatar-preview" src="" style="width:50px; height:50px; border-radius:50%; border:2px solid var(--primary)">
+        </div>
+        <button onclick="joinGame()">Приєднатися</button>
+        <button class="outline" onclick="showScreen('screen-landing')">Назад</button>
+    </div>
+
+    <div id="screen-lobby" class="hidden card">
+        <p style="color:var(--text-sec)">Код кімнати</p>
+        <h1 id="lobby-code" style="letter-spacing:2px; color:var(--primary); margin:0 0 20px 0"></h1>
+        <div id="lobby-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px; width:100%"></div>
+        <div id="host-panel" class="hidden">
+            <button onclick="startGame()">ПОЧАТИ ГРУ 🚀</button>
+        </div>
+        <div id="lobby-wait">Чекаємо хоста...</div>
+    </div>
+
+    <div id="screen-host-controls" class="hidden card">
+        <h3>Пульт Ведучого</h3>
+        <div id="host-round-display" style="font-size:20px; font-weight:900; color:var(--accent); text-align:center; margin-bottom:10px;"></div>
+        
+        <div class="host-deck-view" style="text-align:left; background:black; padding:10px; border-radius:8px; font-family:monospace; margin-bottom:10px;">
+            <div style="color:#666; font-size:12px">Минулі ігри: <span id="hd-history">-</span></div>
+            <div style="color:var(--accent); font-size:14px; margin-top:5px">Поточна: <span id="hd-current"></span></div>
+        </div>
+        
+        <button id="btn-force" class="danger hidden" onclick="forceNext()">ЗМУСИТИ ВСІХ ⏳</button>
+        <button id="btn-end-free" class="danger hidden" onclick="endFreeGame()">ЗАВЕРШИТИ ⏳</button>
+        
+        <div id="host-guess-panel" class="hidden" style="margin-top:10px;">
+            <p style="color:var(--accent); font-weight:bold;">Етап вгадування!</p>
+            <button class="danger" onclick="triggerGuessingTimer()">ЗАПУСТИТИ ТАЙМЕР ⏱</button>
+        </div>
+    </div>
+
+    <div id="screen-game" class="hidden" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <button id="btn-prev-game" class="outline hidden" onclick="togglePrevGrid()" style="width:auto; padding:5px 15px; font-size:12px; margin-bottom:5px">Минула гра (Попап)</button>
+        
+        <div id="c-info-classic" class="hidden" style="text-align: center;">
+            <span style="color:var(--text-sec)">Раунд <span id="c-round">0</span>/25</span>
+            <div id="c-num" style="font-size:60px; font-weight:900; color:var(--accent); display:flex; align-items:center; justify-content:center; height:70px; line-height:1; margin: 0 auto;">?</div>
+            <div style="font-size:12px; color:var(--text-sec); margin-bottom:5px;">Натисніть на число, щоб прибрати його. Натисніть на пусту клітинку щоб переставити його</div>
+        </div>
+        <div id="c-info-free" class="hidden" style="color:var(--text-sec)">Оберіть число, потім клітинку</div>
+        <div id="total-score-display" style="font-size:18px; font-weight:bold; color:var(--primary);">Всього: 0</div>
+
+        <div class="game-board-layout">
+            <div></div> 
+            <div class="grid-wrapper" id="game-grid"></div>
+            <div class="row-scores" id="row-scores"></div>
+            <div class="diag-val"><span id="d2">0</span></div>
+            <div class="col-scores" id="col-scores"></div>
+            <div class="diag-val"><span id="d1">0</span></div>
+        </div>
+        
+        <div id="palette" class="hidden" style="display:grid; grid-template-columns:repeat(7,1fr); gap:5px; max-width:400px; margin-top:10px"></div>
+        
+        <div id="static-prev-grid-area" class="hidden">
+            <div style="color: var(--text-sec); margin-bottom: 5px; font-size: 14px;">1-й Раунд (Використані)</div>
+            <div class="mini-grid" id="static-pg-content" style="width: 200px; height: 200px;"></div>
+        </div>
+
+        <div class="scoring-table">
+            <h4>Шпаргалка</h4>
+            <div class="st-row"><span>2 однакових числа</span><b>10</b></div>
+            <div class="st-row"><span>2 пари однакових чисел</span><b>20</b></div>
+            <div class="st-row"><span>3 однакових числа</span><b>40</b></div>
+            <div class="st-row"><span>5 послідовних чисел (порядок не важливий)</span><b>50</b></div>
+            <div class="st-row"><span>3 однакових + 2 інших</span><b>80</b></div>
+            <div class="st-row"><span>3 рази по 1 і 2 рази по 13</span><b>100</b></div>
+            <div class="st-row"><span>1, 10, 11, 12, 13 (порядок не важливий)</span><b>150</b></div>
+            <div class="st-row"><span>4 однакових числа</span><b>160</b></div>
+            <div class="st-row"><span>4 одиниці</span><b>200</b></div>
+            <div style="margin-top:5px; color:#666; font-size:10px;">*Діагоналі +10 до балів (порядок не важливий)</div>
+        </div>
+    </div>
+
+    <div id="screen-guessing" class="hidden card">
+        <h3>Бонусний етап!</h3>
+        <p>Які 2 числа <b>не випали</b> взагалі (за 2 раунди)?</p>
+        
+        <div id="guessing-grids-container"></div>
+
+        <div class="guess-inputs">
+            <select id="g1" class="guess-select"></select>
+            <select id="g2" class="guess-select"></select>
+        </div>
+        <!-- RED BUTTON -->
+        <button onclick="submitGuesses()" id="btn-sub-guess" class="danger">Відправити</button>
+        <p style="font-size:12px; color:var(--text-sec)" id="guessing-status-text">Чекаємо хоста...</p>
+    </div>
+
+    <div id="screen-wait" class="hidden" style="text-align:center">
+        <div id="fun-text">Обчислення...</div>
+        <div style="font-size:60px; font-weight:900; color:var(--primary)" id="ai-timer"></div>
+    </div>
+
+    <div id="screen-results" class="hidden" style="width:100%; display:flex; flex-direction:column; align-items:center;">
+        <h2 style="margin-bottom:5px">Результати</h2>
+        <div id="correct-answers" style="color:var(--accent); font-weight:bold; margin-bottom:10px; font-size:14px"></div>
+        
+        <div class="lb-tabs" id="lb-tabs"></div>
+        <div class="leaderboard" id="lb-grid"></div>
+        
+        <div id="host-res-btns" class="hidden" style="width:100%; max-width:400px; margin-top:20px; display:flex; flex-direction:column; gap:10px;">
+            <button onclick="nextRound('continue')" id="btn-cont">Продовжити</button>
+            <button class="outline" onclick="nextRound('restart')">Нова колода (Рестарт)</button>
+            <button class="danger" onclick="nextRound('finish')">Завершити гру</button>
+        </div>
+    </div>
+</div>
+
+<div id="avatar-modal" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);z-index:600;display:none;flex-direction:column;align-items:center;justify-content:center">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;max-height:70vh;overflow-y:auto;padding:10px" id="av-grid"></div>
+    <button onclick="document.getElementById('avatar-modal').style.display='none'" style="width:200px;margin-top:20px">Закрити</button>
+</div>
+
+<div id="details-modal" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:700;display:none;align-items:center;justify-content:center" onclick="if(event.target === this) this.style.display='none'">
+    <div class="card" style="width:auto; max-width:95%; position:relative;">
+        <button onclick="document.getElementById('details-modal').style.display='none'" 
+            style="position:absolute; right:15px; top:15px; width:30px; height:30px; background:rgba(255,255,255,0.1); border-radius:50%; border:none; color:white; font-size:16px; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center;">✕</button>
+        <h3 id="det-name"></h3>
+        <div id="det-score" style="color:var(--primary); font-size:30px; font-weight:900"></div>
+        
+        <div id="det-content-area" style="display:flex; gap:20px; justify-content:center; flex-wrap:wrap; margin-top:10px;"></div>
+    </div>
+</div>
+
+<script>
+    const socket = io();
+    let myRoom, isHost, myMode, selectedAvatar = 1;
+    let freeModeNums=[], freeGrid=Array(25).fill(null), selPalNum=null;
+    let resultData = null;
+    let turnActive = false;
+    let currentTurnIdx = null; // Змінна для відстеження поточної клітинки ходу
+
+    function showScreen(id) { document.querySelectorAll('[id^="screen-"]').forEach(el => el.classList.add('hidden')); document.getElementById(id).classList.remove('hidden'); }
+    function showHostSetup() { showScreen('screen-host-setup'); }
+    function showPlayerSetup() { showScreen('screen-player-setup'); }
+
+    function getAvatarUrl(id) { return `https://api.dicebear.com/7.x/notionists/svg?seed=${id}&backgroundColor=c0aede`; }
+    const ag = document.getElementById('av-grid');
+    for(let i=1; i<=20; i++){
+        let img = document.createElement('img'); img.src = getAvatarUrl(i); img.style.width='60px'; img.style.borderRadius='50%'; img.style.cursor='pointer';
+        img.onclick = () => { selectedAvatar = i; document.getElementById('my-avatar-preview').src = getAvatarUrl(i); document.getElementById('avatar-modal').style.display='none'; };
+        ag.appendChild(img);
+    }
+    document.getElementById('my-avatar-preview').src = getAvatarUrl(1);
+    const mg = document.getElementById('game-grid');
+    for(let i=0; i<25; i++){ let c = document.createElement('div'); c.className = 'cell'; c.onclick = () => cellClick(i, c); mg.appendChild(c); }
+    
+    const g1 = document.getElementById('g1'), g2 = document.getElementById('g2');
+    const defaultOpt = document.createElement('option'); defaultOpt.value="0"; defaultOpt.innerText="-";
+    g1.appendChild(defaultOpt.cloneNode(true)); g2.appendChild(defaultOpt.cloneNode(true));
+    for(let i=1; i<=13; i++){ let o=document.createElement('option'); o.value=i; o.innerText=i; g1.appendChild(o.cloneNode(true)); g2.appendChild(o); }
+
+    function createGame() { socket.emit('create_game', { password: document.getElementById('h-pass').value, mode: document.getElementById('h-mode').value }); }
+    function joinGame() { socket.emit('join_game', { room: document.getElementById('p-code').value.toUpperCase(), name: document.getElementById('p-name').value, avatar: getAvatarUrl(selectedAvatar) }); }
+    function startGame() { socket.emit('start_game', {room:myRoom}); }
+    
+    socket.on('game_created', d => { isHost=true; myRoom=d.room_code; myMode=d.mode; document.getElementById('lobby-code').innerText=d.room_code; showScreen('screen-lobby'); document.getElementById('host-panel').classList.remove('hidden'); document.getElementById('lobby-wait').classList.add('hidden'); });
+    socket.on('joined_successfully', d => { myRoom=d.room; myMode=d.mode; document.getElementById('lobby-code').innerText=d.room; showScreen('screen-lobby'); });
+    
+    socket.on('update_players', d => {
+        document.getElementById('lobby-list').innerHTML = d.players.map(p => `
+            <div style="background:var(--surface); padding:10px; border-radius:12px; display:flex; align-items:center; justify-content:space-between; border:1px solid var(--grid-border); margin-bottom:5px; min-height:40px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <img src="${p.avatar}" style="width:36px; height:36px; border-radius:50%; border:1px solid #444; display:block;">
+                    <div style="font-weight:bold; font-size:15px; line-height:1.2;">${p.name}</div>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px; height:100%;">
+                    ${p.ready ? '<span style="color:var(--success); font-weight:900; font-size:18px; line-height:1;">✓</span>' : ''}
+                    ${isHost && p.sid !== socket.id ? `<div class="danger" style="width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px; line-height:1; margin:0; padding:0;" onclick="kickPlayer('${p.sid}')">✕</div>` : ''}
+                </div>
+            </div>`).join('');
+    });
+
+    function kickPlayer(sid) { socket.emit('kick_player', {room: myRoom, sid: sid}); }
+
+    socket.on('game_started', d => {
+        myMode = d.mode;
+        if(isHost) {
+            showScreen('screen-host-controls');
+            document.getElementById('btn-force').classList.add('hidden');
+            document.getElementById('btn-end-free').classList.add('hidden');
+            document.getElementById('host-guess-panel').classList.add('hidden');
+            document.getElementById('host-round-display').innerText = "";
+            if(myMode==='classic') document.getElementById('btn-force').classList.remove('hidden');
+            else document.getElementById('btn-end-free').classList.remove('hidden');
+        } else {
+            showScreen('screen-game');
+            if(myMode==='classic') { document.getElementById('c-info-classic').classList.remove('hidden'); updateScoresUI(); }
+            else { document.getElementById('c-info-free').classList.remove('hidden'); document.getElementById('palette').classList.remove('hidden'); }
+        }
+    });
+
+    // --- ФУНКЦІЯ ВІДОБРАЖЕННЯ ПОМИЛКИ ---
+    function showError(msg) {
+        const t = document.getElementById('top-timer');
+        t.classList.add('visible');
+        document.getElementById('tt-msg').innerText = "ПОМИЛКА: " + msg;
+        document.getElementById('tt-val').innerText = "!";
+        setTimeout(() => {
+            t.classList.remove('visible');
+        }, 3000);
+    }
+    socket.on('display_error', d => showError(d.msg));
+    // -------------------------------------
+
+    socket.on('host_deck_info', d => {
+        document.getElementById('hd-history').innerText = d.history.length ? d.history.join(', ') : '-';
+        document.getElementById('hd-current').innerText = d.current.join(', ');
+    });
+
+    socket.on('new_number_classic', d => {
+        document.getElementById('c-num').innerText = d.number;
+        document.getElementById('c-round').innerText = d.round;
+        hideTimer();
+        turnActive = true;
+        currentTurnIdx = null; // Скидаємо індекс ходу на початку нового раунду
+        if(isHost) {
+            const btn = document.getElementById('btn-force');
+            btn.disabled = false;
+            document.getElementById('host-round-display').innerText = `Раунд ${d.round}/25`;
+            if(d.round >= 25) { btn.innerText = "ЗАВЕРШИТИ 🏁"; btn.className = "danger"; } 
+            else { btn.innerText = "ЗМУСИТИ ВСІХ ⏳"; }
+        }
+    });
+
+    socket.on('start_free_mode_client', d => { freeModeNums = d.numbers; updatePalette(); });
+
+    function cellClick(idx, el) {
+        if(myMode === 'classic') {
+            if(!turnActive) return;
+            
+            // Якщо клікаємо по порожній клітинці (або тій, що не заповнена В МИНУЛИХ ходах)
+            if(!el.classList.contains('filled') || idx === currentTurnIdx) {
+                
+                // Якщо це та сама клітинка, що ми щойно поставили -> видаляємо (Ластик)
+                if(idx === currentTurnIdx) {
+                    el.innerText = "";
+                    el.classList.remove('filled');
+                    currentTurnIdx = null;
+                    socket.emit('place_number_classic', {room: myRoom, index: idx});
+                    return;
+                }
+
+                // Якщо ми вже ставили в цьому ході десь інде -> видаляємо звідти візуально
+                if(currentTurnIdx !== null) {
+                    const oldCell = document.getElementById('game-grid').children[currentTurnIdx];
+                    oldCell.innerText = "";
+                    oldCell.classList.remove('filled');
+                }
+
+                // Ставимо в нову
+                el.innerText = document.getElementById('c-num').innerText;
+                el.classList.add('filled');
+                currentTurnIdx = idx;
+                socket.emit('place_number_classic', {room: myRoom, index: idx});
+            }
+        } else {
+            if(selPalNum === null) return;
+            if(selPalNum === 'eraser') {
+                if(freeGrid[idx] !== null) { freeGrid[idx] = null; el.innerText = ''; el.classList.remove('filled'); }
+            } else {
+                const cur = freeGrid[idx];
+                if(cur === selPalNum) { freeGrid[idx] = null; el.innerText=''; el.classList.remove('filled'); }
+                else { 
+                    const counts = countNums(freeModeNums), placed = countNums(freeGrid);
+                    if((counts[selPalNum]||0) - (placed[selPalNum]||0) > 0) {
+                        freeGrid[idx] = selPalNum; el.innerText = selPalNum; el.classList.add('filled');
+                    }
+                }
+            }
+            updatePalette();
+            socket.emit('update_grid_free', {room: myRoom, grid: freeGrid});
+        }
+        updateScoresUI();
+    }
+
+    function updatePalette() {
+        const p = document.getElementById('palette'); p.innerHTML = '';
+        const counts = countNums(freeModeNums), placed = countNums(freeGrid);
+        for(let i=1; i<=13; i++) {
+            let left = (counts[i]||0) - (placed[i]||0);
+            let d = document.createElement('div');
+            d.style.cssText = `border:1px solid #444; padding:5px; text-align:center; border-radius:5px; cursor:pointer; background:${selPalNum==i?'#1e3a8a':'#1e1e1e'}; opacity:${left>0?1:0.3}`;
+            d.innerHTML = `<b>${i}</b><div style="font-size:10px">${left}</div>`;
+            if(left>0 || selPalNum==i) d.onclick = () => { selPalNum=i; updatePalette(); };
+            p.appendChild(d);
+        }
+        let eraser = document.createElement('div');
+        eraser.style.cssText = `border:1px solid #ef4444; padding:5px; text-align:center; border-radius:5px; cursor:pointer; background:${selPalNum==='eraser'?'#991b1b':'#1e1e1e'}; color:var(--danger)`;
+        eraser.innerHTML = `<b style="font-size:20px">⌫</b>`;
+        eraser.onclick = () => { selPalNum='eraser'; updatePalette(); };
+        p.appendChild(eraser);
+    }
+
+    function calcLineScore(line, isDiag) {
+        let vals = line.filter(x => x !== null && x !== undefined && x !== "" && !isNaN(x));
+        if (vals.length === 0) return 0;
+        vals = vals.map(Number).sort((a,b)=>a-b);
+        let counts = {}; vals.forEach(x => counts[x] = (counts[x]||0)+1);
+        let unique = Object.keys(counts).map(Number).sort((a,b)=>a-b);
+        let freqs = Object.values(counts).sort((a,b)=>b-a);
+        let score = 0;
+        if (counts[1] === 4) score = 200;
+        else if (freqs.includes(4)) score = 160;
+        else if (unique.length === 5 && unique[0]===1 && unique[1]===10 && unique[2]===11 && unique[3]===12 && unique[4]===13) score = 150;
+        else if (counts[1] === 3 && counts[13] === 2) score = 100;
+        else if (freqs.length >= 2 && freqs[0] === 3 && freqs[1] === 2) score = 80;
+        else if (unique.length === 5 && (vals[4] - vals[0] === 4)) score = 50;
+        else if (freqs.includes(3)) score = 40;
+        else if (freqs.filter(f => f === 2).length === 2) score = 20;
+        else if (freqs.includes(2)) score = 10;
+        if (score > 0 && isDiag) score += 10;
+        return score;
+    }
+
+    function updateScoresUI() {
+        const gridChildren = document.getElementById('game-grid').children;
+        let grid = [];
+        for(let c of gridChildren) { let t = c.innerText; grid.push(t ? parseInt(t) : null); }
+        let total = 0;
+        const rowEl = document.getElementById('row-scores'); rowEl.innerHTML='';
+        for(let r=0; r<5; r++) {
+            let s = calcLineScore(grid.slice(r*5, r*5+5), false);
+            total += s;
+            rowEl.innerHTML += `<div class="score-val">${s}</div>`;
+        }
+        const colEl = document.getElementById('col-scores'); colEl.innerHTML='';
+        for(let c=0; c<5; c++) {
+            let s = calcLineScore([grid[c], grid[c+5], grid[c+10], grid[c+15], grid[c+20]], false);
+            total += s;
+            colEl.innerHTML += `<div class="score-val">${s}</div>`;
+        }
+        let s1 = calcLineScore([grid[0], grid[6], grid[12], grid[18], grid[24]], true); total += s1;
+        document.querySelector('#d1').innerText = s1;
+        let s2 = calcLineScore([grid[4], grid[8], grid[12], grid[16], grid[20]], true); total += s2;
+        document.querySelector('#d2').innerText = s2;
+        document.getElementById('total-score-display').innerText = "Всього: " + total;
+    }
+
+    let timerInterval = null;
+    function showTimer(msg, sec, onComplete) {
+        const t = document.getElementById('top-timer');
+        t.classList.add('visible');
+        document.getElementById('tt-msg').innerText = msg;
+        
+        const endTime = Date.now() + sec * 1000;
+        
+        if(timerInterval) clearInterval(timerInterval);
+        
+        const update = () => {
+            const now = Date.now();
+            const remaining = Math.ceil((endTime - now) / 1000);
+            
+            if(remaining < 0) { 
+                clearInterval(timerInterval); 
+                t.classList.remove('visible');
+                if(onComplete) onComplete();
+            } else { 
+                document.getElementById('tt-val').innerText = remaining; 
+            }
+        };
+        
+        update();
+        timerInterval = setInterval(update, 200);
+    }
+
+    function hideTimer(){ 
+        document.getElementById('top-timer').classList.remove('visible'); 
+        if(timerInterval) clearInterval(timerInterval);
+    }
+
+    socket.on('start_guessing_wait_host', () => {
+        if(isHost) {
+            document.getElementById('btn-force').classList.add('hidden');
+            document.getElementById('btn-end-free').classList.add('hidden');
+            document.getElementById('host-guess-panel').classList.remove('hidden');
+            showScreen('screen-host-controls'); 
+        } else {
+            showScreen('screen-guessing');
+            document.getElementById('btn-sub-guess').disabled = false;
+            document.getElementById('btn-sub-guess').innerText = "Відправити";
+            document.getElementById('guessing-status-text').innerText = "Оберіть числа. Ведучий скоро запустить таймер.";
+        }
+    });
+
+    function triggerGuessingTimer() {
+        socket.emit('host_trigger_guessing', {room: myRoom});
+    }
+
+    socket.on('start_guessing_timer', d => {
+        showTimer("ЗАЛИШИЛОСЬ ЧАСУ", d.seconds, () => {
+            if(!isHost && !document.getElementById('btn-sub-guess').disabled) {
+                submitGuesses();
+            }
+        });
+        if(!isHost) {
+            document.getElementById('guessing-status-text').innerText = "Увага! Таймер запущено!";
+        }
+    });
+
+    socket.on('show_guessing_grids', d => {
+        const cont = document.getElementById('guessing-grids-container');
+        cont.innerHTML = '';
+        const draw = (gData, title) => {
+            let box = document.createElement('div'); box.className='guessing-grid-box';
+            box.innerHTML = `<div class="guessing-grid-title">${title}</div>`;
+            let mg = document.createElement('div'); mg.className='mini-grid-large';
+            (gData || Array(25).fill(null)).forEach(v => {
+                let c = document.createElement('div'); c.className='mini-cell';
+                if(v) { c.innerText=v; c.style.background='#1e3a8a'; c.style.color='white'; }
+                mg.appendChild(c);
+            });
+            box.appendChild(mg);
+            cont.appendChild(box);
+        };
+        if(d.grid1) draw(d.grid1, "Раунд 1");
+        if(d.grid2) draw(d.grid2, "Раунд 2");
+    });
+
+    function submitGuesses() {
+        const v1 = document.getElementById('g1').value, v2 = document.getElementById('g2').value;
+        socket.emit('submit_guesses', {room: myRoom, g1: v1, g2: v2});
+        document.getElementById('btn-sub-guess').disabled = true;
+        document.getElementById('btn-sub-guess').innerText = "Відправлено";
+        showScreen('screen-wait');
+        document.getElementById('fun-text').innerText = "Чекаємо інших...";
+        document.getElementById('ai-timer').innerText = "";
+    }
+
+    socket.on('game_finished_wait', d => {
+        showScreen('screen-wait');
+        if(isHost) document.getElementById('screen-host-controls').classList.add('hidden');
+        let s = d.seconds;
+        const t = document.getElementById('ai-timer');
+        document.getElementById('fun-text').innerText = "Обчислення результатів...";
+        t.innerText = s;
+        const int = setInterval(() => {
+            s--;
+            if(s <= 0) { clearInterval(int); t.innerText = "Майже готово..."; } 
+            else { t.innerText = s; }
+        }, 1000);
+    });
+
+    socket.on('show_results', d => {
+        resultData = d;
+        showScreen('screen-results');
+        
+        if(d.correct_missing && d.correct_missing.length > 0) {
+            document.getElementById('correct-answers').innerText = "Не використані числа: " + d.correct_missing.join(', ');
+        } else {
+            document.getElementById('correct-answers').innerText = "";
+        }
+        
+        const tabs = document.getElementById('lb-tabs'); tabs.innerHTML = '';
+        for(let i=1; i<=d.round_id; i++) {
+            let t = document.createElement('div'); t.className = 'lb-tab'; t.innerText = `Раунд ${i}`;
+            t.onclick = () => renderLeaderboard(i);
+            tabs.appendChild(t);
+        }
+        
+        if(d.round_id >= 2) {
+            let tt = document.createElement('div'); tt.className = 'lb-tab'; tt.innerText = "Сумарно";
+            tt.onclick = () => renderLeaderboard('total');
+            tabs.appendChild(tt);
+        }
+        
+        renderLeaderboard(d.round_id);
+
+        if(isHost) {
+            document.getElementById('host-res-btns').classList.remove('hidden');
+            if(!d.can_continue) document.getElementById('btn-cont').classList.add('hidden');
+            else document.getElementById('btn-cont').classList.remove('hidden');
+        }
+    });
+
+    function renderLeaderboard(type) {
+        document.querySelectorAll('.lb-tab').forEach(t => t.classList.remove('active'));
+        Array.from(document.getElementById('lb-tabs').children).forEach(t => {
+            if(t.innerText.includes(type === 'total' ? 'Сумарно' : `Раунд ${type}`)) t.classList.add('active');
+        });
+
+        const lb = document.getElementById('lb-grid'); lb.innerHTML = '';
+        let displayList = [];
+        
+        if(type === 'total') {
+            displayList = resultData.total_results;
+        } else {
+            let temp = [];
+            resultData.total_results.forEach(p => {
+                if(p.rounds && p.rounds[type]) {
+                    let rData = {...p.rounds[type]}; 
+                    rData.orig_player = p; 
+                    temp.push(rData);
+                }
+            });
+            
+            temp.sort((a,b) => b.total_score - a.total_score);
+            let rank = 1;
+            temp.forEach((item, i) => {
+                if(i > 0 && item.total_score < temp[i-1].total_score) rank = i + 1;
+                item.rank_display = rank;
+            });
+            displayList = temp;
+        }
+
+        displayList.forEach(p => {
+            let el = document.createElement('div'); el.className = 'l-card';
+            let guessesHtml = '';
+            if(type !== 'total' && p.guesses) {
+                guessesHtml = `<div class="guess-row">${p.guesses.map(g => `<span class="guess-item ${g.ok?'ok':'fail'}">${g.val}${g.ok?'✓':'✕'}</span>`).join('')}</div>`;
+            }
+            let r = p.rank_display || p.rank;
+            let avatarSrc = p.avatar;
+            if(!avatarSrc || p.name === 'Super AI') avatarSrc = 'https://api.dicebear.com/7.x/bottts/svg?seed=MatematicoAI&backgroundColor=c0aede';
+            el.innerHTML = `
+                <div class="rank-badge">#${r}</div>
+                <img src="${avatarSrc}" style="width:40px;height:40px;border-radius:50%">
+                <div style="font-weight:bold;margin-top:5px">${p.name}</div>
+                <div style="color:var(--primary);font-size:24px;font-weight:900">${p.total_score}</div>
+                ${guessesHtml}
+            `;
+            el.onclick = () => showDetails(p, type);
+            lb.appendChild(el);
+        });
+    }
+
+    socket.on('set_prev_grid', d => {
+        document.getElementById('btn-prev-game').classList.remove('hidden');
+        const c = document.getElementById('pg-content'); c.innerHTML='';
+        d.grid.forEach(v => {
+            let cel=document.createElement('div'); cel.className='mini-cell';
+            if(v) cel.innerText=v;
+            c.appendChild(cel);
+        });
+
+        const staticArea = document.getElementById('static-prev-grid-area');
+        staticArea.classList.remove('hidden');
+        const staticC = document.getElementById('static-pg-content'); staticC.innerHTML = '';
+        d.grid.forEach(v => {
+            let cel=document.createElement('div'); cel.className='mini-cell';
+            if(v) cel.innerText=v;
+            staticC.appendChild(cel);
+        });
+    });
+    function togglePrevGrid() { document.getElementById('prev-grid-popup').classList.toggle('visible'); }
+
+    function countNums(arr){ let c={}; arr.forEach(x=>c[x]=(c[x]||0)+1); return c; }
+    
+    socket.on('reset_client', d => {
+        freeGrid=Array(25).fill(null); selPalNum=null;
+        document.querySelectorAll('.cell').forEach(c=>{c.className='cell';c.innerText=''});
+        updateScoresUI();
+        document.getElementById('btn-sub-guess').disabled=false; 
+        document.getElementById('btn-sub-guess').innerText="Відправити";
+        
+        document.getElementById('btn-prev-game').classList.add('hidden');
+        document.getElementById('static-prev-grid-area').classList.add('hidden');
+        
+        showScreen('screen-game'); 
+        document.getElementById('screen-results').classList.add('hidden'); 
+        
+        if(isHost) {
+           showScreen('screen-host-controls');
+           document.getElementById('host-guess-panel').classList.add('hidden');
+           if(myMode === 'classic') {
+               document.getElementById('btn-force').classList.remove('hidden');
+               document.getElementById('btn-force').disabled = false;
+               document.getElementById('btn-end-free').classList.add('hidden');
+           } else {
+               document.getElementById('btn-end-free').classList.remove('hidden');
+               document.getElementById('btn-end-free').disabled = false;
+               document.getElementById('btn-force').classList.add('hidden');
+           }
+        }
+    });
+
+    socket.on('force_update_grid', d=>{ 
+        d.grid.forEach((v,i)=>{ 
+            let c=document.getElementById('game-grid').children[i]; 
+            if(v){c.innerText=v; c.classList.add('filled')} 
+        }); 
+        updateScoresUI();
+    });
+    socket.on('move_confirmed', d=>{ updateScoresUI(); });
+    socket.on('start_real_timer', d=>showTimer(d.msg, d.seconds));
+
+    function showDetails(p, type) {
+        document.getElementById('details-modal').style.display='flex';
+        document.getElementById('det-name').innerText = p.name;
+        document.getElementById('det-score').innerText = p.total_score;
+        
+        const area = document.getElementById('det-content-area'); area.innerHTML = '';
+
+        const createGridDOM = (gridData, title) => {
+            let container = document.createElement('div');
+            container.innerHTML = `<div style="text-align:center; margin-bottom:5px; color:#888">${title}</div>`;
+            let wrapper = document.createElement('div');
+            wrapper.className = 'game-board-layout';
+            wrapper.style.transform = 'scale(0.8)';
+            wrapper.innerHTML = `<div></div><div class="grid-wrapper" style="width:200px; pointer-events:none;"></div><div class="row-scores"></div><div class="diag-val"><span></span></div><div class="col-scores"></div><div class="diag-val"><span></span></div>`;
+            const gridEl = wrapper.querySelector('.grid-wrapper');
+            (gridData || Array(25).fill(null)).forEach(v => {
+                let d = document.createElement('div'); d.className = 'cell ' + (v ? 'filled' : ''); d.innerText = v || ''; gridEl.appendChild(d); 
+            });
+            container.appendChild(wrapper);
+            return container;
+        };
+        
+        if(type === 'total') {
+            area.style.flexDirection = 'row';
+            area.style.flexWrap = 'wrap'; 
+            if(p.rounds[1]) area.appendChild(createGridDOM(p.rounds[1].grid, "Раунд 1"));
+            if(p.rounds[2]) area.appendChild(createGridDOM(p.rounds[2].grid, "Раунд 2"));
+        } else {
+            area.style.flexDirection = 'row';
+            area.appendChild(createGridDOM(p.grid, `Раунд`));
+        }
+    }
+    
+    function nextRound(a) { socket.emit('next_round_action', {room:myRoom, action:a}); }
+    
+    function forceNext() { 
+        document.getElementById('btn-force').disabled = true;
+        socket.emit('host_force_next', {room:myRoom}); 
+    }
+    
+    function endFreeGame() { 
+        document.getElementById('btn-end-free').disabled = true;
+        setTimeout(()=>document.getElementById('btn-end-free').disabled=false, 15000);
+        socket.emit('host_end_free_game', {room:myRoom}); 
+    }
+    socket.on('return_to_landing', ()=>location.reload());
+</script>
+</body>
+</html>
