@@ -88,13 +88,9 @@ def on_kick(data):
     if room in rooms and rooms[room]['host_sid'] == request.sid:
         target_sid = data['sid']
         if target_sid in rooms[room]['players']:
-            # 1. Повідомляємо
             emit('kicked', room=target_sid)
-            # 2. Видаляємо дані
             del rooms[room]['players'][target_sid]
-            # 3. Примусово розриваємо з'єднання (фікс багу з зависанням)
             disconnect(target_sid)
-            # 4. Оновлюємо список
             update_player_list(room)
 
 def update_player_list(room):
@@ -200,7 +196,9 @@ def host_force_next(data):
     game['processing_turn'] = True
 
     wait_time = 5 if game['round_count'] >= 25 else TIMER_TURN_CLASSIC
-    emit('start_real_timer', {'seconds': wait_time, 'msg': 'Залишилося часу на хід:'}, room=room)
+    # NEW: Send absolute timestamp
+    end_time = time.time() + wait_time
+    emit('start_real_timer', {'seconds': wait_time, 'endTime': end_time, 'msg': 'Залишилося часу на хід:'}, room=room)
     socketio.sleep(wait_time)
     
     for p in game['players'].values():
@@ -239,7 +237,10 @@ def host_end_free_game(data):
     if game['processing_turn']: return
     game['processing_turn'] = True
     
-    emit('start_real_timer', {'seconds': TIMER_END_FREE, 'msg': 'Залишилося щоб заповнити таблицю:'}, room=room)
+    # NEW: Send absolute timestamp
+    end_time = time.time() + TIMER_END_FREE
+    emit('start_real_timer', {'seconds': TIMER_END_FREE, 'endTime': end_time, 'msg': 'Залишилося щоб заповнити таблицю:'}, room=room)
+    
     socketio.sleep(TIMER_END_FREE)
     emit('request_final_grid', {}, room=room)
     socketio.sleep(2)
@@ -303,7 +304,10 @@ def host_trigger_guessing(data):
     game = rooms.get(room)
     if not game or game['host_sid'] != request.sid: return
     
-    emit('start_guessing_timer', {'seconds': TIMER_GUESSING_FINAL}, room=room)
+    # NEW: Send absolute timestamp
+    end_time = time.time() + TIMER_GUESSING_FINAL
+    emit('start_guessing_timer', {'seconds': TIMER_GUESSING_FINAL, 'endTime': end_time}, room=room)
+    
     socketio.sleep(TIMER_GUESSING_FINAL)
     calculate_results(room, guessing_happened=True)
 
@@ -454,13 +458,10 @@ def next_round_action(data):
 
     emit('reset_client', {'has_prev': (action=='continue')}, room=room)
     
-    # --- ВИПРАВЛЕННЯ БАГУ З СІТКОЮ ---
-    # Якщо ми продовжуємо гру (Раунд 2), треба примусово відправити стару сітку
     if action == 'continue':
         for pid, p in game['players'].items():
             if p['prev_grid']:
                 emit('set_prev_grid', {'grid': p['prev_grid']}, room=pid)
-    # ---------------------------------
 
     send_host_info(room)
     
