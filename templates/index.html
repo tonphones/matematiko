@@ -366,11 +366,6 @@
         document.getElementById('hd-history').innerText = d.history.length ? d.history.join(', ') : '-';
         document.getElementById('hd-current').innerText = d.current.join(', ');
     });
-    
-    socket.on('request_final_grid', () => {
-        socket.emit('submit_final_grid', {room: myRoom, grid: freeGrid});
-    });
-    // ------------------------------------
 
     socket.on('new_number_classic', d => {
         document.getElementById('c-num').innerText = d.number;
@@ -494,15 +489,16 @@
     }
 
     let timerInterval = null;
-    function showTimer(msg, sec, endTime = null, onComplete) {
+    function showTimer(msg, sec, onComplete) {
         if(timerInterval) clearInterval(timerInterval);
 
         const t = document.getElementById('top-timer');
         t.classList.add('visible');
         document.getElementById('tt-msg').innerText = msg;
         
-        // Calculate target time in ms
-        const target = endTime ? endTime * 1000 : Date.now() + sec * 1000;
+        // Calculate target time based on client's current time + received seconds
+        // This syncs the DURATION, not the absolute time.
+        const target = Date.now() + sec * 1000;
         
         const update = () => {
             const now = Date.now();
@@ -545,7 +541,7 @@
     }
 
     socket.on('start_guessing_timer', d => {
-        showTimer("ЗАЛИШИЛОСЬ ЧАСУ", d.seconds, d.endTime, () => {
+        showTimer("ЗАЛИШИЛОСЬ ЧАСУ", d.seconds, () => {
             if(!isHost && !document.getElementById('btn-sub-guess').disabled) {
                 submitGuesses();
             }
@@ -682,9 +678,7 @@
     }
 
     socket.on('set_prev_grid', d => {
-        document.getElementById('btn-prev-game').classList.remove('hidden'); // This might be redundant if popup removed, but ensures static area shows up if used elsewhere
-        
-        // Populate STATIC grid
+        // Just unhide the static area
         const staticArea = document.getElementById('static-prev-grid-area');
         staticArea.classList.remove('hidden');
         const staticC = document.getElementById('static-pg-content'); staticC.innerHTML = '';
@@ -695,6 +689,12 @@
         });
     });
     
+    // --- ADDED MISSING HANDLER ---
+    socket.on('request_final_grid', () => {
+        socket.emit('submit_final_grid', {room: myRoom, grid: freeGrid});
+    });
+    // -----------------------------
+
     function countNums(arr){ let c={}; arr.forEach(x=>c[x]=(c[x]||0)+1); return c; }
     
     socket.on('reset_client', d => {
@@ -733,7 +733,7 @@
         updateScoresUI();
     });
     socket.on('move_confirmed', d=>{ updateScoresUI(); });
-    socket.on('start_real_timer', d=>showTimer(d.msg, d.seconds, d.endTime)); // Pass endTime
+    socket.on('start_real_timer', d=>showTimer(d.msg, d.seconds));
 
     function showDetails(p, type) {
         document.getElementById('details-modal').style.display='flex';
