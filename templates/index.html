@@ -366,6 +366,11 @@
         document.getElementById('hd-history').innerText = d.history.length ? d.history.join(', ') : '-';
         document.getElementById('hd-current').innerText = d.current.join(', ');
     });
+    
+    socket.on('request_final_grid', () => {
+        socket.emit('submit_final_grid', {room: myRoom, grid: freeGrid});
+    });
+    // ------------------------------------
 
     socket.on('new_number_classic', d => {
         document.getElementById('c-num').innerText = d.number;
