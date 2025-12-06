@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request
-from flask_socketio import SocketIO, emit, join_room
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import random
 import string
 import time
@@ -37,6 +37,7 @@ def index():
 
 @socketio.on('create_game')
 def on_create(data):
+    # Ваш пароль
     if data.get('password') != "M@t#m@t1k0":
         emit('error', {'msg': 'Невірний пароль!'})
         return
@@ -86,9 +87,15 @@ def on_join(data):
 def on_kick(data):
     room = data['room']
     if room in rooms and rooms[room]['host_sid'] == request.sid:
-        if data['sid'] in rooms[room]['players']:
-            del rooms[room]['players'][data['sid']]
-            emit('kicked', room=data['sid']) 
+        target_sid = data['sid']
+        if target_sid in rooms[room]['players']:
+            # 1. Повідомляємо гравцю, що його кікнули
+            emit('kicked', room=target_sid)
+            # 2. Видаляємо з даних
+            del rooms[room]['players'][target_sid]
+            # 3. Примусово відключаємо від кімнати сокетів (ВАЖЛИВО)
+            leave_room(room, target_sid)
+            # 4. Оновлюємо список для інших
             update_player_list(room)
 
 def update_player_list(room):
@@ -104,7 +111,6 @@ def on_start(data):
 
     # --- ПЕРЕВІРКА НА ГРАВЦІВ ---
     if not game['players']:
-        # explicitly send to request.sid to ensure delivery
         emit('display_error', {'msg': 'Немає гравців! Чекаємо...'}, room=request.sid)
         return
     # ----------------------------
@@ -199,9 +205,11 @@ def host_force_next(data):
     game['processing_turn'] = True
 
     wait_time = 5 if game['round_count'] >= 25 else TIMER_TURN_CLASSIC
-    emit('start_real_timer', {'seconds': wait_time, 'msg': 'УВАГА!'}, room=room)
+    # Виправлено текст для Classic Mode
+    emit('start_real_timer', {'seconds': wait_time, 'msg': 'Залишилося часу на хід:'}, room=room)
     socketio.sleep(wait_time)
     
+    # Авто-заповнення, якщо гравець не походив
     for p in game['players'].values():
         if not p['ready_turn']:
             empties = [i for i, v in enumerate(p['grid']) if v is None]
@@ -238,11 +246,13 @@ def host_end_free_game(data):
     if game['processing_turn']: return
     game['processing_turn'] = True
     
-    emit('start_real_timer', {'seconds': TIMER_END_FREE, 'msg': 'Фінал!'}, room=room)
+    # Виправлено текст для Free Mode
+    emit('start_real_timer', {'seconds': TIMER_END_FREE, 'msg': 'Залишилося щоб заповнити таблицю:'}, room=room)
     socketio.sleep(TIMER_END_FREE)
     emit('request_final_grid', {}, room=room)
     socketio.sleep(2)
     
+    # Гарантоване заповнення порожніх клітинок
     for p in game['players'].values():
         fill_free_mode_grid(p, game['free_mode_numbers'])
         
