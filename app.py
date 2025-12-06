@@ -196,7 +196,7 @@ def host_force_next(data):
     game['processing_turn'] = True
 
     wait_time = 5 if game['round_count'] >= 25 else TIMER_TURN_CLASSIC
-    # NEW: Send absolute timestamp
+    # SEND ABSOLUTE TIMESTAMP
     end_time = time.time() + wait_time
     emit('start_real_timer', {'seconds': wait_time, 'endTime': end_time, 'msg': 'Залишилося часу на хід:'}, room=room)
     socketio.sleep(wait_time)
@@ -238,22 +238,30 @@ def host_end_free_game(data):
     game['processing_turn'] = True
     
     try:
-        emit('start_real_timer', {'seconds': TIMER_END_FREE, 'msg': 'Залишилося щоб заповнити таблицю:'}, room=room)
-        socketio.sleep(TIMER_END_FREE)
+        # SEND ABSOLUTE TIMESTAMP
+        end_time = time.time() + TIMER_END_FREE
+        emit('start_real_timer', {'seconds': TIMER_END_FREE, 'endTime': end_time, 'msg': 'Залишилося щоб заповнити таблицю:'}, room=room)
         
-        # Просимо клієнтів надіслати фінальний стан (страховка)
+        socketio.sleep(TIMER_END_FREE)
         emit('request_final_grid', {}, room=room)
         socketio.sleep(2)
         
-        # Гарантоване заповнення порожніх клітинок
         for p in game['players'].values():
             fill_free_mode_grid(p, game['free_mode_numbers'])
             
         handle_round_end(room)
     except Exception as e:
         print(f"CRITICAL ERROR in free game: {e}")
-        # У разі помилки знімаємо блокування, щоб можна було натиснути ще раз
         game['processing_turn'] = False
+
+@socketio.on('submit_final_grid')
+def submit_final_grid(data):
+    room = data['room']
+    game = rooms.get(room)
+    if game:
+        p = game['players'].get(request.sid)
+        if p:
+            p['grid'] = data['grid']
 
 def fill_free_mode_grid(player, available_numbers):
     current_grid = player['grid']
@@ -293,27 +301,6 @@ def fill_free_mode_grid(player, available_numbers):
             
     player['grid'] = final_grid
 
-def fill_free_mode_grid(player, available_numbers):
-    current_grid = player['grid']
-    placed_counts = Counter([x for x in current_grid if x is not None])
-    total_counts = Counter(available_numbers)
-    
-    pool = []
-    for num, count in total_counts.items():
-        rem = count - placed_counts[num]
-        if rem > 0: pool.extend([num] * rem)
-    
-    random.shuffle(pool)
-    
-    new_grid = []
-    for cell in current_grid:
-        if cell is None:
-            val = pool.pop() if pool else 0
-            new_grid.append(val)
-        else:
-            new_grid.append(cell)
-    player['grid'] = new_grid
-
 # --- END ROUND & GUESSING ---
 def handle_round_end(room_code):
     game = rooms[room_code]
@@ -338,7 +325,7 @@ def host_trigger_guessing(data):
     game = rooms.get(room)
     if not game or game['host_sid'] != request.sid: return
     
-    # NEW: Send absolute timestamp
+    # SEND ABSOLUTE TIMESTAMP
     end_time = time.time() + TIMER_GUESSING_FINAL
     emit('start_guessing_timer', {'seconds': TIMER_GUESSING_FINAL, 'endTime': end_time}, room=room)
     
