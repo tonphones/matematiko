@@ -237,27 +237,61 @@ def host_end_free_game(data):
     if game['processing_turn']: return
     game['processing_turn'] = True
     
-    # NEW: Send absolute timestamp
-    end_time = time.time() + TIMER_END_FREE
-    emit('start_real_timer', {'seconds': TIMER_END_FREE, 'endTime': end_time, 'msg': 'Залишилося щоб заповнити таблицю:'}, room=room)
-    
-    socketio.sleep(TIMER_END_FREE)
-    emit('request_final_grid', {}, room=room)
-    socketio.sleep(2)
-    
-    for p in game['players'].values():
-        fill_free_mode_grid(p, game['free_mode_numbers'])
+    try:
+        emit('start_real_timer', {'seconds': TIMER_END_FREE, 'msg': 'Залишилося щоб заповнити таблицю:'}, room=room)
+        socketio.sleep(TIMER_END_FREE)
         
-    handle_round_end(room)
+        # Просимо клієнтів надіслати фінальний стан (страховка)
+        emit('request_final_grid', {}, room=room)
+        socketio.sleep(2)
+        
+        # Гарантоване заповнення порожніх клітинок
+        for p in game['players'].values():
+            fill_free_mode_grid(p, game['free_mode_numbers'])
+            
+        handle_round_end(room)
+    except Exception as e:
+        print(f"CRITICAL ERROR in free game: {e}")
+        # У разі помилки знімаємо блокування, щоб можна було натиснути ще раз
+        game['processing_turn'] = False
 
-@socketio.on('submit_final_grid')
-def submit_final_grid(data):
-    room = data['room']
-    game = rooms.get(room)
-    if game:
-        p = game['players'].get(request.sid)
-        if p:
-            p['grid'] = data['grid']
+def fill_free_mode_grid(player, available_numbers):
+    current_grid = player['grid']
+    
+    # КРОК 1: Очищаємо та конвертуємо все в числа (фікс помилок типів)
+    safe_grid = []
+    for x in current_grid:
+        try:
+            # Якщо там щось є, робимо int, якщо ні - None
+            val = int(x) if (x is not None and x != "") else None
+            safe_grid.append(val)
+        except:
+            safe_grid.append(None)
+    
+    # КРОК 2: Рахуємо, що вже стоїть
+    placed_counts = Counter([x for x in safe_grid if x is not None])
+    total_counts = Counter(available_numbers)
+    
+    # КРОК 3: Формуємо пул чисел, яких не вистачає
+    pool = []
+    for num, count in total_counts.items():
+        rem = count - placed_counts.get(num, 0)
+        if rem > 0:
+            pool.extend([num] * rem)
+    
+    random.shuffle(pool)
+    
+    # КРОК 4: Заповнюємо пропуски
+    final_grid = []
+    for cell in safe_grid:
+        if cell is None:
+            # Якщо пул пустий (дивна помилка), ставимо 0, інакше беремо з пулу
+            val = pool.pop() if pool else 0
+            final_grid.append(val)
+        else:
+            final_grid.append(cell)
+            
+    player['grid'] = final_grid
 
 def fill_free_mode_grid(player, available_numbers):
     current_grid = player['grid']
